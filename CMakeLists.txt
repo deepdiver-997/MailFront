@@ -85,8 +85,14 @@ set_target_properties(mail_front PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
+# ---- IMAP 测试工具（控制台） ----
+add_executable(test_imap
+    tests/test_imap.cpp
+)
+target_link_libraries(test_imap PRIVATE Qt${QT_VERSION_MAJOR}::Core vmime)
+
 include(GNUInstallDirs)
-install(TARGETS mail_front
+install(TARGETS mail_front test_imap
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

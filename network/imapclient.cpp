@@ -83,8 +83,17 @@ QList<Folder> ImapClient::doFetchFolders(const Account &account)
     QList<Folder> folders;
     try {
         auto session = vmime::net::session::create();
-        session->getProperties()["auth.username"] = account.imapUser.toStdString();
-        session->getProperties()["auth.password"] = account.imapPassword.toStdString();
+
+        // IMAP 认证属性（使用命名空间前缀确保 VMime 正确识别）
+        session->getProperties()["store.imap.auth.username"] = account.imapUser.toStdString();
+        session->getProperties()["store.imap.auth.password"] = account.imapPassword.toStdString();
+        session->getProperties()["store.imap.options.need-authentication"] = true;
+
+        // TLS 配置：根据 account 设置开关
+        if (!account.imapUseTls) {
+            session->getProperties()["store.imap.options.connection.tls"] = false;
+            session->getProperties()["store.imap.options.connection.tls-starttls"] = false;
+        }
 
         QString urlStr = account.imapUseTls
             ? QString("imaps://%1:%2").arg(account.imapHost).arg(account.imapPort)
@@ -137,8 +146,15 @@ QList<Email> ImapClient::doFetchEmails(const Account &account, const QString &fo
     QList<Email> emails;
     try {
         auto session = vmime::net::session::create();
-        session->getProperties()["auth.username"] = account.imapUser.toStdString();
-        session->getProperties()["auth.password"] = account.imapPassword.toStdString();
+
+        session->getProperties()["store.imap.auth.username"] = account.imapUser.toStdString();
+        session->getProperties()["store.imap.auth.password"] = account.imapPassword.toStdString();
+        session->getProperties()["store.imap.options.need-authentication"] = true;
+
+        if (!account.imapUseTls) {
+            session->getProperties()["store.imap.options.connection.tls"] = false;
+            session->getProperties()["store.imap.options.connection.tls-starttls"] = false;
+        }
 
         QString urlStr = account.imapUseTls
             ? QString("imaps://%1:%2").arg(account.imapHost).arg(account.imapPort)
@@ -217,8 +233,15 @@ QString ImapClient::doFetchEmailBody(const Account &account, const QString &fold
     QString bodyHtml;
     try {
         auto session = vmime::net::session::create();
-        session->getProperties()["auth.username"] = account.imapUser.toStdString();
-        session->getProperties()["auth.password"] = account.imapPassword.toStdString();
+
+        session->getProperties()["store.imap.auth.username"] = account.imapUser.toStdString();
+        session->getProperties()["store.imap.auth.password"] = account.imapPassword.toStdString();
+        session->getProperties()["store.imap.options.need-authentication"] = true;
+
+        if (!account.imapUseTls) {
+            session->getProperties()["store.imap.options.connection.tls"] = false;
+            session->getProperties()["store.imap.options.connection.tls-starttls"] = false;
+        }
 
         QString urlStr = account.imapUseTls
             ? QString("imaps://%1:%2").arg(account.imapHost).arg(account.imapPort)
