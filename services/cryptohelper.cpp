@@ -3,14 +3,27 @@
 #include <QSysInfo>
 #include <QCryptographicHash>
 #include <QRandomGenerator>
+#include <QDebug>
 
 #if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
 #  include <CommonCrypto/CommonCryptor.h>
 #  define HAS_COMMON_CRYPTO 1
 #else
+#  include <openssl/err.h>
 #  include <openssl/evp.h>
 #  include <openssl/rand.h>
 #  include <memory>
+
+static QString lastOpenSslError()
+{
+    const unsigned long error = ERR_get_error();
+    if (error == 0)
+        return QStringLiteral("unknown OpenSSL error");
+
+    char buffer[256] = {};
+    ERR_error_string_n(error, buffer, sizeof(buffer));
+    return QString::fromLatin1(buffer);
+}
 #endif
 
 QByteArray CryptoHelper::deriveKey()
@@ -36,7 +49,10 @@ QString CryptoHelper::encrypt(const QString &plainText)
         iv[i] = static_cast<char>(QRandomGenerator::global()->bounded(256));
 #else
     if (RAND_bytes(reinterpret_cast<unsigned char *>(iv.data()), iv.size()) != 1)
+    {
+        qWarning() << "RAND_bytes failed:" << lastOpenSslError();
         return {};
+    }
 #endif
 
     // 输出缓冲区（最多多出一个 block）
@@ -72,7 +88,10 @@ QString CryptoHelper::encrypt(const QString &plainText)
            && EVP_EncryptFinal_ex(ctx.get(),
                                   reinterpret_cast<unsigned char *>(cipherData.data()) + outLen1, &outLen2) == 1;
     if (!ok)
+    {
+        qWarning() << "EVP encryption failed:" << lastOpenSslError();
         return {};
+    }
 
     cipherData.resize(outLen1 + outLen2);
 #endif
@@ -132,7 +151,10 @@ QString CryptoHelper::decrypt(const QString &cipherText)
            && EVP_DecryptFinal_ex(ctx.get(),
                                   reinterpret_cast<unsigned char *>(plainData.data()) + outLen1, &outLen2) == 1;
     if (!ok)
+    {
+        qWarning() << "EVP decryption failed:" << lastOpenSslError();
         return {};
+    }
 
     plainData.resize(outLen1 + outLen2);
 #endif
