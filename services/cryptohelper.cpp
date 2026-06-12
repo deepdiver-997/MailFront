@@ -10,6 +10,7 @@
 #else
 #  include <openssl/evp.h>
 #  include <openssl/rand.h>
+#  include <memory>
 #endif
 
 QByteArray CryptoHelper::deriveKey()
@@ -57,20 +58,19 @@ QString CryptoHelper::encrypt(const QString &plainText)
     int outLen1 = 0;
     int outLen2 = 0;
 
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    auto ctx = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>(
+        EVP_CIPHER_CTX_new(), &EVP_CIPHER_CTX_free);
     if (!ctx)
         return {};
 
-    bool ok = EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr,
+    bool ok = EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_cbc(), nullptr,
                                  reinterpret_cast<const unsigned char *>(key.constData()),
                                  reinterpret_cast<const unsigned char *>(iv.constData())) == 1
-           && EVP_EncryptUpdate(ctx,
+           && EVP_EncryptUpdate(ctx.get(),
                                 reinterpret_cast<unsigned char *>(cipherData.data()), &outLen1,
                                 reinterpret_cast<const unsigned char *>(plainData.constData()), plainData.size()) == 1
-           && EVP_EncryptFinal_ex(ctx,
+           && EVP_EncryptFinal_ex(ctx.get(),
                                   reinterpret_cast<unsigned char *>(cipherData.data()) + outLen1, &outLen2) == 1;
-
-    EVP_CIPHER_CTX_free(ctx);
     if (!ok)
         return {};
 
@@ -118,20 +118,19 @@ QString CryptoHelper::decrypt(const QString &cipherText)
     int outLen1 = 0;
     int outLen2 = 0;
 
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    auto ctx = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>(
+        EVP_CIPHER_CTX_new(), &EVP_CIPHER_CTX_free);
     if (!ctx)
         return {};
 
-    bool ok = EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr,
+    bool ok = EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_cbc(), nullptr,
                                  reinterpret_cast<const unsigned char *>(key.constData()),
                                  reinterpret_cast<const unsigned char *>(iv.constData())) == 1
-           && EVP_DecryptUpdate(ctx,
+           && EVP_DecryptUpdate(ctx.get(),
                                 reinterpret_cast<unsigned char *>(plainData.data()), &outLen1,
                                 reinterpret_cast<const unsigned char *>(cipherData.constData()), cipherData.size()) == 1
-           && EVP_DecryptFinal_ex(ctx,
+           && EVP_DecryptFinal_ex(ctx.get(),
                                   reinterpret_cast<unsigned char *>(plainData.data()) + outLen1, &outLen2) == 1;
-
-    EVP_CIPHER_CTX_free(ctx);
     if (!ok)
         return {};
 
