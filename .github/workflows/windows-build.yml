@@ -1,0 +1,65 @@
+name: Windows Qt Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.7.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Install dependencies (vmime/OpenSSL)
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install vmime:x64-windows openssl:x64-windows
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist/mail_front -Force | Out-Null
+          Copy-Item build/mail_front.exe dist/mail_front/
+          windeployqt --release --compiler-runtime dist/mail_front/mail_front.exe
+
+          $vcpkgBin = Join-Path $env:VCPKG_ROOT "installed\x64-windows\bin"
+          Copy-Item "$vcpkgBin\vmime*.dll" dist/mail_front/ -ErrorAction SilentlyContinue
+          Copy-Item "$vcpkgBin\libcrypto-*.dll" dist/mail_front/ -ErrorAction SilentlyContinue
+          Copy-Item "$vcpkgBin\libssl-*.dll" dist/mail_front/ -ErrorAction SilentlyContinue
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mail_front-windows
+          path: dist/mail_front

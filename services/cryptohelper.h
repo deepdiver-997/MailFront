@@ -9,7 +9,7 @@
 // AES-256-CBC，密钥由机器唯一 ID (QSysInfo::machineUniqueId)
 // 通过 SHA-256 派生。密文格式：base64(随机IV + 密文)。
 //
-// macOS 使用内置 CommonCrypto，无需额外依赖。
+// macOS/iOS 使用 CommonCrypto，其它平台使用 OpenSSL EVP。
 // ============================================================
 class CryptoHelper
 {

@@ -11,10 +11,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Concurrent Sql)
+find_package(vmime CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(/Users/zhuhongrui/Desktop/code/c++/OuterLib/vmime/src)
-link_directories(/Users/zhuhongrui/Desktop/code/c++/OuterLib/vmime/build/lib)
 
 set(PROJECT_SOURCES
         main.cpp
@@ -72,7 +72,18 @@ else()
     endif()
 endif()
 
-target_link_libraries(mail_front PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Concurrent Qt${QT_VERSION_MAJOR}::Sql vmime)
+set(VMIME_TARGET vmime)
+if(TARGET vmime::vmime)
+    set(VMIME_TARGET vmime::vmime)
+endif()
+
+target_link_libraries(mail_front PRIVATE
+    Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::Concurrent
+    Qt${QT_VERSION_MAJOR}::Sql
+    OpenSSL::Crypto
+    ${VMIME_TARGET}
+)
 
 if(${QT_VERSION} VERSION_LESS 6.1.0)
   set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.mail_front)
@@ -89,13 +100,13 @@ set_target_properties(mail_front PROPERTIES
 add_executable(test_imap
     tests/test_imap.cpp
 )
-target_link_libraries(test_imap PRIVATE Qt${QT_VERSION_MAJOR}::Core vmime)
+target_link_libraries(test_imap PRIVATE Qt${QT_VERSION_MAJOR}::Core ${VMIME_TARGET})
 
 # ---- SMTP 测试工具（控制台） ----
 add_executable(smtp_test
     tests/smtp_test.cpp
 )
-target_link_libraries(smtp_test PRIVATE Qt${QT_VERSION_MAJOR}::Core vmime)
+target_link_libraries(smtp_test PRIVATE Qt${QT_VERSION_MAJOR}::Core ${VMIME_TARGET})
 
 include(GNUInstallDirs)
 install(TARGETS mail_front test_imap smtp_test
