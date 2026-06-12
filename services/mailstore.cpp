@@ -68,29 +68,74 @@ bool MailStore::createTables()
     query.exec("CREATE INDEX IF NOT EXISTS idx_emails_folder ON emails(folder)");
     query.exec("CREATE INDEX IF NOT EXISTS idx_emails_message_id ON emails(message_id)");
 
+    // 迁移：添加 account 列（兼容旧数据库）
+    QSqlQuery checkQuery(m_db);
+    checkQuery.exec("PRAGMA table_info(emails)");
+    bool hasAccountCol = false;
+    while (checkQuery.next()) {
+        if (checkQuery.value(1).toString() == "account") {
+            hasAccountCol = true;
+            break;
+        }
+    }
+    if (!hasAccountCol) {
+        query.exec("ALTER TABLE emails ADD COLUMN account TEXT NOT NULL DEFAULT ''");
+        query.exec("CREATE INDEX IF NOT EXISTS idx_emails_account ON emails(account)");
+    }
+
     return true;
 }
 
 // ---- 邮件 CRUD ----
 
-bool MailStore::saveEmail(const Email &email)
+bool MailStore::saveEmail(const Email &email, const QString &accountEmail)
 {
     QSqlQuery query(m_db);
-    query.prepare(R"(
-        INSERT OR REPLACE INTO emails
-            (message_id, sender, recipients, subject, body, date, is_read, folder, attachments)
-        VALUES (:mid, :sender, :recipients, :subject, :body, :date, :is_read, :folder, :attachments)
-    )");
 
+    // IMAP 邮件去重：按 message_id + folder + account 查找已有记录
+    if (!email.messageId.isEmpty()) {
+        query.prepare("SELECT id FROM emails WHERE message_id = :mid AND folder = :folder AND account = :account");
+        query.bindValue(":mid", email.messageId);
+        query.bindValue(":folder", email.folder);
+        query.bindValue(":account", accountEmail);
+        if (query.exec() && query.next()) {
+            // 已有记录 → 更新
+            int64_t existingId = query.value(0).toLongLong();
+            query.prepare(R"(
+                UPDATE emails SET sender=:sender, recipients=:recipients, subject=:subject,
+                    body=:body, date=:date,
+                    is_read=MAX(is_read, :is_read),
+                    attachments=:attachments
+                WHERE id=:id
+            )");
+            query.bindValue(":id", existingId);
+            query.bindValue(":sender", email.from);
+            query.bindValue(":recipients", email.to.isEmpty() ? QString("") : email.to.join(", "));
+            query.bindValue(":subject", email.subject);
+            query.bindValue(":body", email.body);
+            query.bindValue(":date", email.date.toString(Qt::ISODate));
+            query.bindValue(":is_read", email.isRead ? 1 : 0);
+            query.bindValue(":attachments", email.attachments.join(", "));
+            return query.exec();
+        }
+    }
+
+    // 新邮件 → 插入
+    query.prepare(R"(
+        INSERT INTO emails
+            (message_id, sender, recipients, subject, body, date, is_read, folder, attachments, account)
+        VALUES (:mid, :sender, :recipients, :subject, :body, :date, :is_read, :folder, :attachments, :account)
+    )");
     query.bindValue(":mid", email.messageId);
     query.bindValue(":sender", email.from);
-    query.bindValue(":recipients", email.to.join(", "));
+    query.bindValue(":recipients", email.to.isEmpty() ? QString("") : email.to.join(", "));
     query.bindValue(":subject", email.subject);
     query.bindValue(":body", email.body);
     query.bindValue(":date", email.date.toString(Qt::ISODate));
     query.bindValue(":is_read", email.isRead ? 1 : 0);
     query.bindValue(":folder", email.folder);
     query.bindValue(":attachments", email.attachments.join(", "));
+    query.bindValue(":account", accountEmail);
 
     if (!query.exec()) {
         qWarning() << "saveEmail 失败:" << query.lastError().text();
@@ -99,12 +144,12 @@ bool MailStore::saveEmail(const Email &email)
     return true;
 }
 
-bool MailStore::saveEmails(const QList<Email> &emails)
+bool MailStore::saveEmails(const QList<Email> &emails, const QString &accountEmail)
 {
     // Qt 知识点：用事务批量插入，大幅提升 SQLite 写入性能
     m_db.transaction();
     for (const Email &email : emails) {
-        if (!saveEmail(email)) {
+        if (!saveEmail(email, accountEmail)) {
             m_db.rollback();
             return false;
         }
@@ -128,27 +173,45 @@ bool MailStore::deleteEmail(int64_t id)
     return query.exec();
 }
 
-bool MailStore::deleteEmailsInFolder(const QString &folderPath)
+bool MailStore::deleteEmailsInFolder(const QString &folderPath, const QString &accountEmail)
 {
     QSqlQuery query(m_db);
-    query.prepare("DELETE FROM emails WHERE folder = :folder");
-    query.bindValue(":folder", folderPath);
+    if (accountEmail.isEmpty()) {
+        query.prepare("DELETE FROM emails WHERE folder = :folder");
+        query.bindValue(":folder", folderPath);
+    } else {
+        query.prepare("DELETE FROM emails WHERE folder = :folder AND account = :account");
+        query.bindValue(":folder", folderPath);
+        query.bindValue(":account", accountEmail);
+    }
     return query.exec();
 }
 
 // ---- 查询 ----
 
-QList<Email> MailStore::getEmails(const QString &folder, int limit, int offset) const
+QList<Email> MailStore::getEmails(const QString &folder, const QString &accountEmail,
+                                   int limit, int offset) const
 {
     QList<Email> result;
     QSqlQuery query(m_db);
-    query.prepare(R"(
-        SELECT id, message_id, sender, recipients, subject, body, date, is_read, folder, attachments
-        FROM emails
-        WHERE folder = :folder
-        ORDER BY date DESC
-        LIMIT :limit OFFSET :offset
-    )");
+    if (accountEmail.isEmpty()) {
+        query.prepare(R"(
+            SELECT id, message_id, sender, recipients, subject, body, date, is_read, folder, attachments
+            FROM emails
+            WHERE folder = :folder
+            ORDER BY date DESC
+            LIMIT :limit OFFSET :offset
+        )");
+    } else {
+        query.prepare(R"(
+            SELECT id, message_id, sender, recipients, subject, body, date, is_read, folder, attachments
+            FROM emails
+            WHERE folder = :folder AND account = :account
+            ORDER BY date DESC
+            LIMIT :limit OFFSET :offset
+        )");
+        query.bindValue(":account", accountEmail);
+    }
     query.bindValue(":folder", folder);
     query.bindValue(":limit", limit);
     query.bindValue(":offset", offset);
@@ -194,13 +257,47 @@ Email MailStore::getEmailById(int64_t id) const
     return e;
 }
 
-int MailStore::getUnreadCount(const QString &folder) const
+int MailStore::getUnreadCount(const QString &folder, const QString &accountEmail) const
 {
     QSqlQuery query(m_db);
-    query.prepare("SELECT COUNT(*) FROM emails WHERE folder = :folder AND is_read = 0");
+    if (accountEmail.isEmpty()) {
+        query.prepare("SELECT COUNT(*) FROM emails WHERE folder = :folder AND is_read = 0");
+    } else {
+        query.prepare("SELECT COUNT(*) FROM emails WHERE folder = :folder AND is_read = 0 AND account = :account");
+        query.bindValue(":account", accountEmail);
+    }
     query.bindValue(":folder", folder);
     if (query.exec() && query.next()) {
         return query.value(0).toInt();
     }
     return 0;
+}
+
+QStringList MailStore::getDistinctFolders(const QString &accountEmail) const
+{
+    QStringList folders;
+    QSqlQuery query(m_db);
+    query.prepare("SELECT DISTINCT folder FROM emails WHERE account = :account AND folder != ''");
+    query.bindValue(":account", accountEmail);
+    if (query.exec()) {
+        while (query.next()) {
+            folders.append(query.value(0).toString());
+        }
+    }
+    return folders;
+}
+
+QSet<QString> MailStore::getMessageIds(const QString &folder, const QString &accountEmail) const
+{
+    QSet<QString> ids;
+    QSqlQuery query(m_db);
+    query.prepare("SELECT message_id FROM emails WHERE folder = :folder AND account = :account AND message_id IS NOT NULL AND message_id != ''");
+    query.bindValue(":folder", folder);
+    query.bindValue(":account", accountEmail);
+    if (query.exec()) {
+        while (query.next()) {
+            ids.insert(query.value(0).toString());
+        }
+    }
+    return ids;
 }

@@ -5,6 +5,13 @@
 #include <vmime/vmime.hpp>
 #include <vmime/net/imap/IMAPStore.hpp>
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <cstring>
+
 // ============================================================
 // IMAP 服务器连通性测试
 //
@@ -58,8 +65,8 @@ int main(int argc, char *argv[])
         session->getProperties()["store.imap.auth.username"] = username.toStdString();
         session->getProperties()["store.imap.auth.password"] = password.toStdString();
         session->getProperties()["store.imap.options.need-authentication"] = true;
-        session->getProperties()["store.imap.options.connection.tls"] = false;
-        session->getProperties()["store.imap.options.connection.tls-starttls"] = false;
+        session->getProperties()["store.imap.connection.tls.required"] = true;
+        // 不设 connection.tls —— 让 VMime 根据服务器 CAPABILITY 自动协商 STARTTLS
         qDebug() << "     OK\n";
 
         // ---- 3. 连接 ----
@@ -84,8 +91,15 @@ int main(int argc, char *argv[])
             int start = total - fetchCount + 1;
             qDebug() << "     取最近" << fetchCount << "封 (序号" << start << "-" << total << "):\n";
 
-            vmime::net::messageSet msgSet = vmime::net::messageSet::byNumber(start, -1);
-            auto msgs = inbox->getMessages(msgSet);
+            vmime::net::messageSet msgSet = vmime::net::messageSet::byNumber(
+                static_cast<size_t>(start), static_cast<size_t>(total));
+
+            // 一次 FETCH 拿到 FLAGS + ENVELOPE + SIZE + UID
+            vmime::net::fetchAttributes attrs;
+            attrs.add(vmime::net::fetchAttributes::FLAGS);
+            attrs.add(vmime::net::fetchAttributes::ENVELOPE);
+            attrs.add(vmime::net::fetchAttributes::SIZE);
+            auto msgs = inbox->getAndFetchMessages(msgSet, attrs);
 
             // 倒序——最新的先显示
             for (int i = static_cast<int>(msgs.size()) - 1; i >= 0; --i) {
@@ -98,46 +112,33 @@ int main(int argc, char *argv[])
                          << (flags & 1 ? "[已读]" : "[未读]");
 
                 try {
-                    auto parsed = vm->getParsedMessage();
-                    vmime::messageParser parser(parsed);
-
-                    try {
-                        qDebug() << "  主题:"
-                                 << QString::fromStdString(parser.getSubject().getWholeBuffer());
-                    } catch (...) {
-                        qDebug() << "  主题: (无)";
-                    }
-
-                    try {
-                        qDebug() << "  发件人:"
-                                 << QString::fromStdString(parser.getExpeditor().generate());
-                    } catch (...) {
-                        qDebug() << "  发件人: (未知)";
-                    }
-
-                    // 提取 Date 头
-                    try {
-                        auto hdr = parsed->getHeader();
-                        auto fld = hdr->findField("Date");
-                        if (fld)
-                            qDebug() << "  日期:" << QString::fromStdString(
-                                fld->getValue()->generate());
-                    } catch (...) { }
-
-                    // 正文预览
-                    try {
-                        if (parser.getTextPartCount() > 0) {
-                            QString body = extractContent(parser.getTextPartAt(0)->getText());
-                            if (body.length() > 200)
-                                body = body.left(200) + "...\n  [截断]";
-                            qDebug() << "  正文:" << body;
+                    auto hdr = vm->getHeader();
+                    if (hdr) {
+                        try {
+                            qDebug() << "  主题:"
+                                     << QString::fromStdString(
+                                         hdr->Subject()->getValue<vmime::text>()->getWholeBuffer());
+                        } catch (...) {
+                            qDebug() << "  主题: (无)";
                         }
-                    } catch (...) {
-                        qDebug() << "  正文: (无法解析)";
-                    }
 
-                } catch (vmime::exception &e) {
-                    qDebug() << "  解析失败:" << e.what();
+                        try {
+                            qDebug() << "  发件人:"
+                                     << QString::fromStdString(
+                                         hdr->From()->getValue<vmime::mailbox>()->generate());
+                        } catch (...) {
+                            qDebug() << "  发件人: (未知)";
+                        }
+
+                        try {
+                            auto dateField = hdr->Date();
+                            if (dateField)
+                                qDebug() << "  日期:" << QString::fromStdString(
+                                    dateField->getValue<vmime::datetime>()->generate());
+                        } catch (...) { }
+                    }
+                } catch (...) {
+                    qDebug() << "  头部解析失败";
                 }
                 qDebug() << "";
             }

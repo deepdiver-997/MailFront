@@ -7,6 +7,7 @@
 #include <QSplitter>
 #include <QToolBar>
 #include <QAction>
+#include <QComboBox>
 
 #include "widgets/foldertree.h"
 #include "widgets/mailpreview.h"
@@ -47,6 +48,11 @@ private slots:
     void onEmailError(const QString &error);
     void onFoldersFetched(const QList<Folder> &folders);
     void onEmailsFetched(const QString &folderPath, const QList<Email> &emails);
+    void onEmailBodyFetched(const QString &messageId, const QString &body);
+    void onDeleteAction();
+    void onEmailDeleted(const QString &uid);
+    void onAccountSwitched(int index);
+    void onAccountsChanged();
 
     // 刷新收件箱
     void onRefreshAction();
@@ -58,6 +64,7 @@ private:
     void setupStatusBar();
     void setupConnections();
     void initServices();
+    void rebuildAccountCombo();
 
     Ui::mailApp *ui;
 
@@ -86,6 +93,15 @@ private:
 
     // 当前选中的文件夹
     QString m_currentFolder;
+
+    // 正文加载跟踪
+    QString m_pendingBodyMessageId;
+
+    // 账号切换
+    QComboBox *m_accountCombo;
+    int m_currentAccountIndex = -1;
+    QString m_currentAccountEmail;
+    QString m_fetchAccountEmail;  // 防止旧请求覆盖新账号数据
 };
 
 #endif // MAILAPP_H

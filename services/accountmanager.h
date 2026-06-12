@@ -34,6 +34,7 @@ public:
     int accountCount() const;
 
     Account defaultAccount() const;
+    int defaultAccountIndex() const;
     void setDefaultAccountIndex(int index);
 
 signals:

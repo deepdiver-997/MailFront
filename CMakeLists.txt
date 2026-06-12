@@ -91,8 +91,14 @@ add_executable(test_imap
 )
 target_link_libraries(test_imap PRIVATE Qt${QT_VERSION_MAJOR}::Core vmime)
 
+# ---- SMTP 测试工具（控制台） ----
+add_executable(smtp_test
+    tests/smtp_test.cpp
+)
+target_link_libraries(smtp_test PRIVATE Qt${QT_VERSION_MAJOR}::Core vmime)
+
 include(GNUInstallDirs)
-install(TARGETS mail_front test_imap
+install(TARGETS mail_front test_imap smtp_test
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

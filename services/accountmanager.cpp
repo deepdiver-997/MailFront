@@ -115,6 +115,11 @@ Account AccountManager::defaultAccount() const
     return m_accounts[m_defaultIndex];
 }
 
+int AccountManager::defaultAccountIndex() const
+{
+    return m_defaultIndex;
+}
+
 void AccountManager::setDefaultAccountIndex(int index)
 {
     if (index >= 0 && index < m_accounts.size()) {

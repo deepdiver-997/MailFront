@@ -81,11 +81,9 @@ bool SmtpClient::doSendEmail(Account account, Email email)
         session->getProperties()[std::string(prefix) + "auth.password"] =
             account.smtpPassword.toStdString();
 
-        // 跳过 TLS 证书验证（测试用）
-        if (account.smtpUseTls) {
-            tr->setCertificateVerifier(
-                vmime::make_shared<DummyCertVerifier>());
-        }
+        // 跳过 TLS 证书验证（SMTPS 和 STARTTLS 都需要）
+        tr->setCertificateVerifier(
+            vmime::make_shared<DummyCertVerifier>());
 
         // 构建 MIME 消息
         vmime::messageBuilder mb;

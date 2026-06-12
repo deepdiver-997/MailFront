@@ -37,6 +37,7 @@ public:
     void setEmails(const QList<Email> &emails);
     void clear();
     Email emailAt(int row) const;
+    void updateEmailBody(int row, const QString &body);
 
 private:
     QList<Email> m_emails;

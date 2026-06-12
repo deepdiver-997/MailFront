@@ -12,23 +12,26 @@ FolderTree::FolderTree(QWidget *parent)
     setEditTriggers(QAbstractItemView::NoEditTriggers);
     setExpandsOnDoubleClick(true);
 
-    initSystemFolders();
-
     // 连接点击信号
     connect(this, &QTreeView::clicked, this, &FolderTree::onItemClicked);
 }
 
-void FolderTree::initSystemFolders()
+void FolderTree::clear()
 {
-    // 内建系统文件夹
-    addFolder("收件箱", "INBOX", 0);
-    addFolder("已发送", "Sent", 0);
-    addFolder("草稿箱", "Drafts", 0);
-    addFolder("垃圾箱", "Trash", 0);
+    m_model->removeRows(0, m_model->rowCount());
 }
 
 void FolderTree::addFolder(const QString &name, const QString &path, int unreadCount)
 {
+    // 检查是否已存在同路径文件夹（大小写不敏感），存在则更新未读数
+    for (int i = 0; i < m_model->rowCount(); ++i) {
+        QStandardItem *existing = m_model->item(i);
+        if (existing && existing->data(Qt::UserRole).toString().compare(path, Qt::CaseInsensitive) == 0) {
+            updateUnreadCount(path, unreadCount);
+            return;
+        }
+    }
+
     auto *item = new QStandardItem(name);
     item->setData(path, Qt::UserRole);          // 存 IMAP 路径
     item->setData(name, Qt::DisplayRole);
@@ -49,7 +52,7 @@ void FolderTree::updateUnreadCount(const QString &path, int unreadCount)
 {
     for (int i = 0; i < m_model->rowCount(); ++i) {
         QStandardItem *item = m_model->item(i);
-        if (item->data(Qt::UserRole).toString() == path) {
+        if (item->data(Qt::UserRole).toString().compare(path, Qt::CaseInsensitive) == 0) {
             QString name = item->data(Qt::DisplayRole).toString();
             if (unreadCount > 0) {
                 QFont font = item->font();

@@ -10,6 +10,7 @@ class FolderTree : public QTreeView
 public:
     explicit FolderTree(QWidget *parent = nullptr);
 
+    void clear();
     void addFolder(const QString &name, const QString &path, int unreadCount);
     void updateUnreadCount(const QString &path, int unreadCount);
 
@@ -21,7 +22,6 @@ private slots:
 
 private:
     QStandardItemModel *m_model;
-    void initSystemFolders();
 };
 
 #endif // FOLDERTREE_H

@@ -5,6 +5,7 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QList>
+#include <QSet>
 #include "core/email.h"
 
 // ============================================================
@@ -28,16 +29,19 @@ public:
     bool init(const QString &dbPath);
 
     // 邮件 CRUD
-    bool saveEmail(const Email &email);
-    bool saveEmails(const QList<Email> &emails);
+    bool saveEmail(const Email &email, const QString &accountEmail = QString());
+    bool saveEmails(const QList<Email> &emails, const QString &accountEmail = QString());
     bool markAsRead(int64_t id);
     bool deleteEmail(int64_t id);
-    bool deleteEmailsInFolder(const QString &folderPath);
+    bool deleteEmailsInFolder(const QString &folderPath, const QString &accountEmail = QString());
 
     // 查询
-    QList<Email> getEmails(const QString &folder, int limit = 50, int offset = 0) const;
+    QList<Email> getEmails(const QString &folder, const QString &accountEmail = QString(),
+                           int limit = 50, int offset = 0) const;
     Email getEmailById(int64_t id) const;
-    int getUnreadCount(const QString &folder) const;
+    int getUnreadCount(const QString &folder, const QString &accountEmail = QString()) const;
+    QStringList getDistinctFolders(const QString &accountEmail) const;
+    QSet<QString> getMessageIds(const QString &folder, const QString &accountEmail) const;
 
 private:
     bool createTables();

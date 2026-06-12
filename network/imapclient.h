@@ -22,10 +22,15 @@ public:
 
     // 连接并获取文件夹列表
     void fetchFolders(const Account &account);
-    // 获取指定文件夹的邮件
+    // 获取指定文件夹的邮件（全量，首次同步用）
     void fetchEmails(const Account &account, const QString &folderPath, int count = 50);
+    // 增量同步——只拉取本地没有的邮件
+    void fetchNewEmails(const Account &account, const QString &folderPath,
+                        const QSet<QString> &knownUIDs);
     // 获取指定邮件的完整内容
     void fetchEmailBody(const Account &account, const QString &folderPath, const QString &messageId);
+    // 删除指定邮件（IMAP STORE +FLAGS \Deleted + EXPUNGE）
+    void deleteEmail(const Account &account, const QString &folderPath, const QString &uid);
 
     bool isBusy() const;
 
@@ -33,21 +38,29 @@ signals:
     void foldersFetched(const QList<Folder> &folders);
     void emailsFetched(const QString &folderPath, const QList<Email> &emails);
     void emailBodyFetched(const QString &messageId, const QString &body);
+    void emailDeleted(const QString &uid);
     void errorOccurred(const QString &errorMessage);
 
 private slots:
     void onFoldersTaskFinished();
     void onEmailsTaskFinished();
     void onEmailBodyTaskFinished();
+    void onDeleteTaskFinished();
 
 private:
     QList<Folder> doFetchFolders(const Account &account);
     QList<Email> doFetchEmails(const Account &account, const QString &folderPath, int count);
+    QList<Email> doFetchNewEmails(const Account &account, const QString &folderPath, QSet<QString> knownUIDs);
     QString doFetchEmailBody(const Account &account, const QString &folderPath, const QString &messageId);
+    bool doDeleteEmail(const Account &account, const QString &folderPath, const QString &uid);
 
     QFutureWatcher<QList<Folder>> *m_folderWatcher;
     QFutureWatcher<QList<Email>> *m_emailWatcher;
     QFutureWatcher<QString> *m_bodyWatcher;
+    QFutureWatcher<bool> *m_deleteWatcher;
+
+    QString m_pendingBodyMessageId;  // fetchEmailBody 暂存，供 onEmailBodyTaskFinished 回传
+    QString m_pendingDeleteUid;      // deleteEmail 暂存 UID
 };
 
 #endif // IMAPCLIENT_H

@@ -79,3 +79,12 @@ Email MailListModel::emailAt(int row) const
         return m_emails.at(row);
     return Email();
 }
+
+void MailListModel::updateEmailBody(int row, const QString &body)
+{
+    if (row < 0 || row >= m_emails.size())
+        return;
+    m_emails[row].body = body;
+    QModelIndex idx = index(row, 0);
+    emit dataChanged(idx, idx);
+}
